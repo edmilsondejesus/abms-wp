@@ -1,6 +1,23 @@
 model ABMSWPSimulacaoMensal
 
 global {
+	
+    // Contadores de residências por tipo
+    int total_residencias <- 0;
+    int total_ambientalistas <- 0;
+    int total_perdularios <- 0;
+    int total_moderados <- 0;
+    
+    int residencias_sem_consumo <- 0; // Contador de residências sem dados de consumo
+    list<string> matriculas_sem_consumo <- []; // Lista de matriculas sem dados
+    
+
+    // Listas para armazenar contagens ao longo do tempo (opcional)
+    list<int> historico_total_residencias <- [];
+    list<int> historico_ambientalistas <- [];
+    list<int> historico_perdularios <- [];
+    list<int> historico_moderados <- [];
+    
     // Caminho do arquivo CSV
     //string file_path <- "../includes/Tabela_consumidores_Itapua_convertida.csv";
     string file_path <- "../includes/Tabela_consumidores_Itapua_com_setor_e_comportamento.csv";
@@ -44,6 +61,40 @@ global {
     // Lista para armazenar os anos (2025 a 2034)
     list<int> anos <- [2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035];
     
+    
+  reflex contar_residencias {
+    // Reinicia os contadores a cada passo
+    total_residencias <- 0;
+    total_ambientalistas <- 0;
+    total_perdularios <- 0;
+    total_moderados <- 0;
+
+    // Conta as residências por tipo
+    ask Residencia {
+        total_residencias <- total_residencias + 1;
+
+        if (tp_comportamento = 'AMBIENTALISTA') {
+            total_ambientalistas <- total_ambientalistas + 1;
+        } else if (tp_comportamento = 'PERDULARIO') {
+            total_perdularios <- total_perdularios + 1;
+        } else {
+            total_moderados <- total_moderados + 1; // Assume-se que o resto é 'MODERADO'
+        }
+    }
+
+    // Armazena no histórico (opcional)
+    historico_total_residencias << total_residencias;
+    historico_ambientalistas << total_ambientalistas;
+    historico_perdularios << total_perdularios;
+    historico_moderados << total_moderados;
+
+    // Exibe no console (opcional)
+    write "Total de Residências: " + total_residencias;
+    write "Ambientalistas: " + total_ambientalistas;
+    write "Perdulários: " + total_perdularios;
+    write "Moderados: " + total_moderados;
+}
+
      // Condição de parada: parar em 2034
     reflex stop_simulation when: currentYear = 2035 {
         do pause ;
@@ -54,13 +105,13 @@ global {
         create Bairro from: BA_setores_CD20220_shape_file;
         
         create ConsumoResidencia from: arquivo_consumo {
-            sk_matricula <- int(self["SK_MATRICULA"]);
+            sk_matricula <- string(self["SK_MATRICULA"]);
             am_referencia <- int(self["AM_REFERENCIA"]);
             nn_consumo <- float(self["HCLQTCON"]);
         }
         
         create Residencia from: arquivo {
-            sk_matricula <- int(self["SK_MATRICULA"]);
+            sk_matricula <- string(self["SK_MATRICULA"]);
             nm_subcategoria <- self["NM_SUBCATEGORIA"];
             tp_comportamento <- self["TP_COMPORTAMENTO"];
             nn_moradores <- int(self["NN_MORADORES"]);
@@ -81,15 +132,46 @@ global {
             
             // Inicializa o consumo anual com base na média dos últimos 12 meses
             list<ConsumoResidencia> consumos <- ConsumoResidencia where (each.sk_matricula = self.sk_matricula);
-            consumo_atual_cI <- consumos mean_of each.nn_consumo; // Média dos 12 meses = 1 ano
-            consumo_atual_cII <- consumo_atual_cI;
-            consumo_atual_cIII <- consumo_atual_cI;
-            //write consumo_atual;
+            
+            if (empty(consumos)) {
+            	// Se não houver dados de consumo
+            	residencias_sem_consumo <- residencias_sem_consumo + 1;
+            	matriculas_sem_consumo << sk_matricula;
+            
+            	// Define um valor padrão baseado no comportamento
+            	float consumo_padrao <- 0.0;
+            	if (tp_comportamento = 'AMBIENTALISTA') {
+                	consumo_padrao <- (52.621962 * nn_moradores * 30.5) / 1000; // Valor padrão para ambientalistas
+            	} else if (tp_comportamento = 'PERDULARIO') {
+                	consumo_padrao <- (510.352010 * nn_moradores * 30.5) / 1000; // Valor padrão para perdulários
+            	} else {
+               		consumo_padrao <- (144.315598 * nn_moradores * 30.5) / 1000; // Valor padrão para moderados
+            	}
+            
+            	consumo_atual_cI <- consumo_padrao;
+           	 	consumo_atual_cII <- consumo_padrao;
+            	consumo_atual_cIII <- consumo_padrao;
+            
+           	 	//write "Aviso: Residência " + sk_matricula + " sem dados de consumo. Usando valor padrão: " + consumo_padrao;
+        	} else {
+          	  // Se houver dados de consumo, calcula a média normalmente
+            	consumo_atual_cI <- consumos mean_of each.nn_consumo;
+            	consumo_atual_cII <- consumo_atual_cI;
+        	    consumo_atual_cIII <- consumo_atual_cI;
+    	    }
+ 	       
         }
     }
     
     // Reflexo para calcular o consumo mensal total de todas as residências somadas.
+    
+    reflex prever_consumo_residencias {
+    	ask Residencia {
+        	do prever_consumo;
+    	}
+	}
     reflex calcular_consumo_mensal {    
+   
     	// Exibe o ano e mês atual (opcional)
     	string mes_ano;
     	mes_ano <- string(currentMonth) + "/" + string(currentYear);
@@ -100,9 +182,9 @@ global {
         float consumo_total_cIII <- Residencia sum_of each.consumo_atual_cIII;
         
         // Adiciona o consumo total à lista de consumo anual
-        consumo_anual_total_cI << consumo_total_cI / 1000;
-        consumo_anual_total_cII << consumo_total_cII / 1000;
-        consumo_anual_total_cIII << consumo_total_cIII / 1000;
+        consumo_anual_total_cI << consumo_total_cI ;// 1000;
+        consumo_anual_total_cII << consumo_total_cII ;// 1000;
+        consumo_anual_total_cIII << consumo_total_cIII ;// 1000;
 
         //write consumo_total;
         write "Consumo previsto CI (" + mes_ano + "): " + consumo_anual_total_cI[cycle];
@@ -121,14 +203,14 @@ global {
 
 species ConsumoResidencia {
     // Atributos do agente
-    int sk_matricula;
+    string sk_matricula;
     int am_referencia;
     float nn_consumo;
 }
 
 species Residencia {
     // Atributos do agente
-    int sk_matricula;
+    string sk_matricula;
     string nm_subcategoria;
     int nn_moradores;
     int st_piscina;
@@ -154,28 +236,35 @@ species Residencia {
     
     
     // Atualiza o número de moradores com base na taxa de crescimento populacional
-    reflex atualizar_moradores {
+    action atualizar_moradores {
         float taxa_mensal <- get_taxa_crescimento_mensal();
         nn_moradores <- int(nn_moradores * (1 + taxa_mensal));
     }
     
     // Calcula o consumo para os cenários I e II
-    reflex prever_consumo {
+    action prever_consumo {
     	//recupera a taxa de crescimento mensal
     	float taxa_mensal <- get_taxa_crescimento_mensal();
     
-    	//Cenário I: O consumo acompanha o crescimento da população
-        consumo_atual_cI <- (consumo_atual_cI * (1 + taxa_mensal));
-        
-        //Cenário II: O consumo dos ambientalistas acompanha a taxa de crescimento populacional
-        if(tp_comportamento='AMBIENTALISTA'){
-        	consumo_atual_cII <- (consumo_atual_cII * (1 + taxa_mensal)) ;
+		// Cenário I: Todas as residências têm consumo ajustado pela taxa
+        consumo_atual_cI <- consumo_atual_cI * (1 + taxa_mensal);
+
+        // Cenário II: 
+        // - Ambientalistas têm consumo ajustado pela taxa
+        // - Outros mantêm o consumo atual (sem taxa)
+        if (tp_comportamento = 'AMBIENTALISTA') {
+            consumo_atual_cII <- consumo_atual_cII * (1 + taxa_mensal);
+        } else {
+            consumo_atual_cII <- consumo_atual_cII; // Mantém o valor atual (sem crescimento)
         }
-        
-        
-        //Cenário III: O consumo dos perdulários cresce de acordo com o crescimento populacional
-        if(tp_comportamento='PERDULARIO'){
-        	consumo_atual_cIII <- (consumo_atual_cIII * (1 + taxa_mensal)) ;
+
+        // Cenário III:
+        // - Perdulários têm consumo ajustado pela taxa
+        // - Outros mantêm o consumo atual (sem taxa)
+        if (tp_comportamento = 'PERDULARIO') {
+            consumo_atual_cIII <- consumo_atual_cIII * (1 + taxa_mensal);
+        } else {
+            consumo_atual_cIII <- consumo_atual_cIII; // Mantém o valor atual (sem crescimento)
         }
                 
         //float fator_subcategoria <- (nm_subcategoria = "NORMAL") ? 1.0 : 1.05;
@@ -220,18 +309,26 @@ experiment "Visualizacao" type: gui {
 
                 
             }
-        }
+        }   
+        
+        monitor "Total Residências" value: total_residencias;
+        monitor "Ambientalistas" value: total_ambientalistas color: #green;
+        monitor "Perdulários" value: total_perdularios color: #red;
+        monitor "Moderados" value: total_moderados color: #blue;    
+        monitor "Residências sem dados" value: residencias_sem_consumo color: #orange;
     }
 }
 
+
 experiment "Simulacao" type: batch {
     int tempo_maximo <- anos_simulacao; // Tempo máximo em anos
-
     output {
         monitor "Ano" value: anos[cycle]; // Exibe o ano atual (2025 a 2034)
         monitor "Consumo CI (m^3)" value: consumo_anual_total_cI[cycle]; // Usa o valor da lista consumo_anual_total
         monitor "Consumo CII (m^3)" value: consumo_anual_total_cII[cycle]; // Usa o valor da lista consumo_anual_total
         monitor "Consumo CIII (m^3)" value: consumo_anual_total_cIII[cycle]; // Usa o valor da lista consumo_anual_total
+        monitor "Residências sem dados" value: residencias_sem_consumo color: #orange;
 
     }
 }
+

@@ -10,8 +10,9 @@ Then, the Python scripts below, present in the Python folder, must be executed, 
 
 1 - Script_calcula_media_consumo.ipynb - Calculates the average consumption of homes, based on the last 12 months of consumption, generating the output file Tabela_consumo_medio_Itapua_12m.csv
 2 - Script_mapeia_setor_censitario.ipynb - identifies the census sector of each consumer unit, generating the output file include\Tabela_consumidores_Itapua_com_setor.csv with a new column CD_SETOR
-3 - Script_classifica_comportamento.ipynb - Classifies the behavior of each consumer unit, based on the average consumption of the last 12 months, generating the output file \includes\Tabela_consumidores_Itapua_com_setor_e_comportamento.csv with a new column TP_COMPORTAMENTO
+3 - Script_classifica_comportamento_com_media.ipynb - Classifies the behavior of each consumer unit, based on the average consumption of the last 12 months, generating the output file \includes\Tabela_consumidores_Itapua_com_setor_e_comportamento.csv with a new column TP_COMPORTAMENTO
 4 - Script_total_de_ligacoes_por_setor.ipynb - calculates the total number of active connections per sector, generating the output file include\Table_top_10_setores.csv
+5 - Script_soma_consumo120m - Group consumption mensal on the last 10 years.
 
 After generating the complementary files, the ABMS-WP project must be opened in GAMA Platform and the simulations of the ABMS-WP_Simulacao_Mensal.gaml model run
 
