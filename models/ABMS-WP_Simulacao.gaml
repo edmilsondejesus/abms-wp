@@ -1,4 +1,4 @@
-model ABMSWPSimulacaoMensal
+model ABMSWPSimulacao
 
 global {
     // Variáveis globais para contagem de residências
@@ -20,11 +20,24 @@ global {
     string consumo_file <- "../includes/Tabela_consumo_medio_Itapua_12m.csv";
     string shapefile_CD20220_path_prj <- "31984";
     file BA_setores_CD20220_shape_file <- shape_file("../includes/maps/Itapua13.shp", shapefile_CD20220_path_prj, true);
-    
+
+    // Inicialização dos arquivos CSV
+    csv_file arquivo <- csv_file(file_path, ";", true);
+    csv_file arquivo_consumo <- csv_file(consumo_file, ";", true);    
+
+    // Caminho do arquivo Shapefile
+    string shapefile_path <- "../includes/maps/LIMITE_BAIRRO.shp";
+	
+	//string shapefile_path <- "../includes/maps/Itapua_Setores_2022.shp";
+    string shapefile_path_prj <- "31984";
+    file shapefile <- shape_file(shapefile_path, shapefile_path_prj, true);
+    //geometry shape <- envelope(shapefile);
+    geometry shape <- envelope(BA_setores_CD20220_shape_file);
+        
     // Variáveis de tempo e simulação
-    int anos_simulacao <- 60;
-    int currentYear <- 2025;
-    int currentMonth <- 1;
+    int meses_simulacao <- 60;
+    int ano_corrente <- 2025;
+    int mes_corrente <- 1;
     list<int> anos <- [2025, 2026, 2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035];
     
     // Taxas de crescimento
@@ -41,9 +54,7 @@ global {
     list<float> relatorio_final <- [];
     
     init {
-        // Inicialização dos arquivos CSV
-        csv_file arquivo <- csv_file(file_path, ";", true);
-        csv_file arquivo_consumo <- csv_file(consumo_file, ";", true);
+
         
         // Criação dos agentes principais
         create Bairro from: BA_setores_CD20220_shape_file;
@@ -127,8 +138,14 @@ global {
     }
     
 
-    reflex calcular_consumo_mensal {    
-        string mes_ano <- string(currentMonth) + "/" + string(currentYear);
+	reflex calcular_consumo_mensal {    
+        // Primeiro atualiza as previsões de consumo
+        ask Residencia {
+            do prever_consumo;  // Chamada da ação que estava faltando
+        }
+        
+        // Depois calcula os totais
+        string mes_ano <- string(mes_corrente) + "/" + string(ano_corrente);
         write "Mês/Ano: " + mes_ano;
         
         consumo_anual_total_cI << Residencia sum_of each.consumo_atual_cI;
@@ -140,14 +157,14 @@ global {
         write "Consumo previsto CIII (" + mes_ano + "): " + consumo_anual_total_cIII[cycle];
         
         // Atualização do tempo
-        currentMonth <- currentMonth + 1;
-        if (currentMonth > 12) {
-            currentMonth <- 1;
-            currentYear <- currentYear + 1;
+        mes_corrente <- mes_corrente + 1;
+        if (mes_corrente > 12) {
+            mes_corrente <- 1;
+            ano_corrente <- ano_corrente + 1;
         }
     }
     
-    reflex stop_simulation when: currentYear = 2035 {
+    reflex stop_simulation when: ano_corrente = 2035 {
         do pause;
     }
 
@@ -203,14 +220,14 @@ species PredictorAgent {
     action calcular_previsao {
         if (!empty(dados_recebidos)) {
             float ultimo_valor <- dados_recebidos[length(dados_recebidos) - 1];
-            int indice_ano <- currentYear - 2025;
+            int indice_ano <- ano_corrente - 2025;
             float taxa <- taxas_crescimento_mensal[indice_ano min (length(taxas_crescimento_mensal) - 1)];
             float previsao <- ultimo_valor * (1 + taxa);
             
             previsoes << previsao;
             previsoes_consumo <- previsoes;
             
-            write "PredictorAgent: Previsão calculada para " + currentMonth + "/" + currentYear + ": " + previsao;
+            write "PredictorAgent: Previsão calculada para " + mes_corrente + "/" + ano_corrente + ": " + previsao;
         } else {
             write "PredictorAgent: Nenhum dado recebido para processamento";
         }
@@ -256,7 +273,7 @@ species Residencia {
     float consumo_atual_cIII;
     
     float get_taxa_crescimento_mensal {
-        int indice_ano <- currentYear - 2025;
+        int indice_ano <- ano_corrente - 2025;
         if (indice_ano >= 0 and indice_ano < length(taxas_crescimento_mensal)) {
             return taxas_crescimento_mensal[indice_ano];
         }
@@ -283,6 +300,9 @@ species Residencia {
         if (tp_comportamento = 'PERDULARIO') {
             consumo_atual_cIII <- consumo_atual_cIII * (1 + taxa_mensal);
         }
+        
+        // Atualiza número de moradores
+        do atualizar_moradores;
     }
     
     aspect base {
