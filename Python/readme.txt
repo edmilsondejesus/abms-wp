@@ -1,6 +1,6 @@
 The input files required to run the simulations on the GAMA Platform are:
 
-/includes/Tabela_consumo_Itapua_60m.csv - Contains the individual consumption of households over the last 60 months.
+/includes/Tabela_consumo_Itapua_120m.csv - Contains the individual consumption of households over the last 120 months.
 
 /includes/maps/Itapua13.shp - Contains the shapefile with the Census Sectors of the Iapuã Neighborhood
 
